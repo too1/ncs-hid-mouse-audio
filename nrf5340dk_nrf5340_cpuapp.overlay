@@ -1,0 +1,13 @@
+&usbd {
+	hs_0 {
+		label = "HEADSET";
+		compatible = "usb-audio-hs";
+		mic-feature-mute;
+		mic-channel-l;
+		mic-channel-r;
+
+		hp-feature-mute;
+		hp-channel-l;
+		hp-channel-r;
+	};
+};

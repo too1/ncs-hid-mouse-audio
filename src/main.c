@@ -10,6 +10,7 @@
 
 #include <usb/usb_device.h>
 #include <usb/class/usb_hid.h>
+#include <usb/class/usb_audio.h>
 
 #define LOG_LEVEL LOG_LEVEL_DBG
 LOG_MODULE_REGISTER(main);
@@ -248,11 +249,52 @@ int callbacks_configure(const struct device *gpio, uint32_t pin, int flags,
 	return 0;
 }
 
+static void data_received(const struct device *dev,
+			  struct net_buf *buffer,
+			  size_t size)
+{
+	int ret;
+
+	if (!buffer || !size) {
+		/* This should never happen */
+		return;
+	}
+
+	LOG_DBG("Received %d data, buffer %p", size, buffer);
+
+	/* Check if the device OUT buffer can be used for input */
+	if (size == usb_audio_get_in_frame_size(dev)) {
+		ret = usb_audio_send(dev, buffer, size);
+		if (ret) {
+			net_buf_unref(buffer);
+		}
+	} else {
+		net_buf_unref(buffer);
+	}
+}
+
+static void feature_update(const struct device *dev,
+			   const struct usb_audio_fu_evt *evt)
+{
+	LOG_DBG("Control selector %d for channel %d updated",
+		evt->cs, evt->channel);
+	switch (evt->cs) {
+	case USB_AUDIO_FU_MUTE_CONTROL:
+	default:
+		break;
+	}
+}
+
+static const struct usb_audio_ops ops = {
+	.data_received_cb = data_received,
+	.feature_update_cb = feature_update,
+};
+
 void main(void)
 {
 	int ret;
 	uint8_t report[4] = { 0x00 };
-	const struct device *led_dev, *hid_dev;
+	const struct device *led_dev, *hid_dev, *hs_dev;
 
 	led_dev = device_get_binding(LED_PORT);
 	if (led_dev == NULL) {
@@ -308,6 +350,17 @@ void main(void)
 
 	usb_hid_init(hid_dev);
 
+	// Registering USB audio device
+	hs_dev = device_get_binding("HEADSET");
+
+	if (!hs_dev) {
+		LOG_ERR("Can not get USB Headset Device");
+		return;
+	}
+
+	usb_audio_register(hs_dev, &ops);
+
+	// Enabling USB
 	ret = usb_enable(status_cb);
 	if (ret != 0) {
 		LOG_ERR("Failed to enable USB");
